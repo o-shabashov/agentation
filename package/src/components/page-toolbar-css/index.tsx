@@ -619,6 +619,7 @@ export function PageFeedbackToolbarCSS({
   const drawCanvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawingRef = useRef(false);
   const currentStrokeRef = useRef<Array<{x: number, y: number}>>([]);
+  const glowAlphaRef = useRef(0);
 
   // Cmd+shift+click multi-select state
   const [pendingMultiSelectElements, setPendingMultiSelectElements] = useState<
@@ -2414,7 +2415,7 @@ export function PageFeedbackToolbarCSS({
   }, [isActive, isDragging]);
 
   // Draw mode: redraw helper
-  const redrawCanvas = useCallback((ctx: CanvasRenderingContext2D, strokes: typeof drawStrokes, hoveredIdx?: number | null) => {
+  const redrawCanvas = useCallback((ctx: CanvasRenderingContext2D, strokes: typeof drawStrokes, hoveredIdx?: number | null, glowAlpha = 0.25) => {
     const scrollY = window.scrollY;
     const dpr = window.devicePixelRatio || 1;
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
@@ -2445,7 +2446,7 @@ export function PageFeedbackToolbarCSS({
         ctx.lineWidth = 10;
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
-        ctx.globalAlpha = 0.25;
+        ctx.globalAlpha = glowAlpha;
         tracePath(stroke, offsetY);
         ctx.stroke();
         ctx.globalAlpha = 1;
@@ -2810,6 +2811,38 @@ export function PageFeedbackToolbarCSS({
       window.removeEventListener("scroll", onScroll);
     };
   }, [isActive, drawStrokes, hoveredDrawingIdx, pendingAnnotation?.drawingIndex, redrawCanvas]);
+
+  // Animate glow highlight in/out
+  useEffect(() => {
+    const canvas = drawCanvasRef.current;
+    if (!canvas || !isActive || drawStrokes.length === 0) return;
+
+    const effectiveHighlight = hoveredDrawingIdx ?? pendingAnnotation?.drawingIndex ?? null;
+    const targetAlpha = effectiveHighlight != null ? 0.25 : 0;
+
+    // Already at target — no animation needed
+    if (Math.abs(glowAlphaRef.current - targetAlpha) < 0.005) {
+      glowAlphaRef.current = targetAlpha;
+      return;
+    }
+
+    let raf: number;
+    const animate = () => {
+      const diff = targetAlpha - glowAlphaRef.current;
+      if (Math.abs(diff) < 0.005) {
+        glowAlphaRef.current = targetAlpha;
+      } else {
+        glowAlphaRef.current += diff * 0.2;
+      }
+      const ctx = canvas.getContext("2d");
+      if (ctx) redrawCanvas(ctx, drawStrokes, effectiveHighlight, glowAlphaRef.current);
+      if (Math.abs(glowAlphaRef.current - targetAlpha) > 0.005) {
+        raf = requestAnimationFrame(animate);
+      }
+    };
+    raf = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(raf);
+  }, [isActive, hoveredDrawingIdx, pendingAnnotation?.drawingIndex, drawStrokes, redrawCanvas]);
 
   // Fire webhook for annotation events - returns true on success, false on failure
   const fireWebhook = useCallback(
@@ -4691,6 +4724,7 @@ export function PageFeedbackToolbarCSS({
           <canvas
             ref={drawCanvasRef}
             className={`${styles.drawCanvas} ${isDrawMode ? styles.active : ""}`}
+            style={!showMarkers && !isDrawMode ? { display: "none" } : undefined}
           />
 
           {/* Hover highlight */}
