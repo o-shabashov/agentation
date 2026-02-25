@@ -6,9 +6,10 @@
 // (IndexedDB, API backend, etc.)
 //
 
-import type { Annotation } from "../types";
+import type { Annotation, DrawStroke } from "../types";
 
 const STORAGE_PREFIX = "feedback-annotations-";
+const DRAWINGS_PREFIX = "feedback-drawings-";
 const DEFAULT_RETENTION_DAYS = 7;
 
 export function getStorageKey(pathname: string): string {
@@ -77,6 +78,45 @@ export function loadAllAnnotations<T = Annotation>(): Map<string, T[]> {
   }
 
   return result;
+}
+
+// =============================================================================
+// Drawing Storage
+// =============================================================================
+
+export function getDrawingsKey(pathname: string): string {
+  return `${DRAWINGS_PREFIX}${pathname}`;
+}
+
+export function loadDrawings(pathname: string): DrawStroke[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = localStorage.getItem(getDrawingsKey(pathname));
+    if (!stored) return [];
+    const data = JSON.parse(stored);
+    const cutoff = Date.now() - DEFAULT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    return data.filter((s: { timestamp?: number }) => !s.timestamp || s.timestamp > cutoff);
+  } catch {
+    return [];
+  }
+}
+
+export function saveDrawings(pathname: string, strokes: DrawStroke[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(getDrawingsKey(pathname), JSON.stringify(strokes));
+  } catch {
+    // localStorage might be full or disabled
+  }
+}
+
+export function clearDrawings(pathname: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.removeItem(getDrawingsKey(pathname));
+  } catch {
+    // ignore
+  }
 }
 
 // =============================================================================

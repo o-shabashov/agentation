@@ -29,6 +29,7 @@ export type Annotation = {
   }>; // Individual bounding boxes for multi-select hover highlighting
   drawingIndex?: number; // Index of linked drawing stroke (click-to-annotate)
   strokeId?: string; // Unique ID of linked drawing stroke
+  drawingContext?: DrawingContext; // Rich gesture + element data for drawings
 
   // Protocol fields (added when syncing to server)
   sessionId?: string;
@@ -84,5 +85,53 @@ export type ThreadMessage = {
   role: "human" | "agent";
   content: string;
   timestamp: number;
+};
+
+// -----------------------------------------------------------------------------
+// Drawing Strokes
+// -----------------------------------------------------------------------------
+
+export type DrawStroke = {
+  id: string;
+  points: Array<{ x: number; y: number }>;
+  color: string;
+  fixed: boolean;
+  timestamp?: number;
+};
+
+// -----------------------------------------------------------------------------
+// Drawing Context (rich data for drawing-linked annotations)
+// -----------------------------------------------------------------------------
+
+export type DrawingElement = {
+  name: string;
+  path: string;
+  reactComponents?: string;
+  boundingBox?: { x: number; y: number; width: number; height: number };
+  nearbyText?: string;
+  /** Word or phrase at the exact point (arrow tip, underline position, etc.) */
+  textAtPoint?: string;
+  cssClasses?: string;
+  computedStyles?: string;
+  accessibility?: string;
+};
+
+export type DrawingContext = {
+  gesture: string; // "Arrow" | "Box" | "Circle" | "Underline" | "Strikethrough" | "Drawing"
+  /** The main target element (arrow tip, first contained, midpoint element) */
+  primary?: DrawingElement;
+  /** Arrow start element */
+  secondary?: DrawingElement;
+  /** All elements inside a Box/Circle gesture */
+  contained?: DrawingElement[];
+  /** Bounding box of the stroke itself (viewport coords) */
+  strokeBBox?: { x: number; y: number; width: number; height: number };
+  /** Start and end points of the stroke (viewport coords, useful for arrow direction) */
+  strokeStart?: { x: number; y: number };
+  strokeEnd?: { x: number; y: number };
+  /** Exact text under the stroke (underline/strikethrough: full span, arrow: word at tip) */
+  textContent?: string;
+  /** JPEG data URL of the page region with drawing strokes composited on top */
+  screenshot?: string;
 };
 

@@ -91,7 +91,7 @@ export default defineConfig((options) => [
     splitting: false,
     sourcemap: true,
     clean: !options.watch,
-    external: ["react", "react-dom"],
+    external: ["react", "react-dom", "modern-screenshot"],
     esbuildPlugins: [scssModulesPlugin()],
     define: {
       __VERSION__: JSON.stringify(VERSION),

@@ -145,6 +145,28 @@ $green: #34c759;
   }
 }
 
+@keyframes tooltipInNoScale {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(2px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes tooltipOutNoScale {
+  from {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-50%) translateY(2px) scale(0.98);
+  }
+}
+
 @keyframes hoverHighlightIn {
   from {
     opacity: 0;
@@ -1021,6 +1043,20 @@ $green: #34c759;
 
   &.exit {
     animation: tooltipOut 0.1s ease-out forwards;
+  }
+
+  // When tooltip is triggered by drawing hover (not marker hover),
+  // parent marker isn't scaled — so don't counter-scale
+  &.drawingHover {
+    transform: translateX(-50%) scale(1);
+
+    &.enter {
+      animation: tooltipInNoScale 0.1s ease-out forwards;
+    }
+
+    &.exit {
+      animation: tooltipOutNoScale 0.1s ease-out forwards;
+    }
   }
 }
 
