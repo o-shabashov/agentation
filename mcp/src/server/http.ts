@@ -10,7 +10,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { TOOLS, handleTool, error as toolError } from "./mcp.js";
+import { TOOLS, handleTool, error as toolError, saveScreenshotToDisk } from "./mcp.js";
 import {
   createSession,
   getSession,
@@ -365,6 +365,17 @@ const addAnnotationHandler: RouteHandler = async (req, res, params) => {
 
     if (!body.comment || !body.element || !body.elementPath) {
       return sendError(res, 400, "comment, element, and elementPath are required");
+    }
+
+    // Save screenshot to disk and replace base64 with file path before storing.
+    // This way the SSE event and stored record both have the path, never the blob.
+    if (body.drawingContext?.screenshot) {
+      const fileId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const screenshotPath = saveScreenshotToDisk(fileId, body.drawingContext.screenshot);
+      if (screenshotPath) {
+        (body.drawingContext as any).screenshotPath = screenshotPath;
+      }
+      delete (body.drawingContext as any).screenshot;
     }
 
     const annotation = addAnnotation(params.id, body);

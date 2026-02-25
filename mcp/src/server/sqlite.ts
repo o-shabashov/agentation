@@ -112,6 +112,7 @@ function initDatabase(db: Database.Database): void {
       resolved_at TEXT,
       resolved_by TEXT,
       author_id TEXT,
+      drawing_context TEXT,
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     );
 
@@ -136,6 +137,13 @@ function initDatabase(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_events_session_seq ON events(session_id, sequence);
     CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id);
   `);
+
+  // Migrations: add columns that may be missing from older databases
+  const cols = db.prepare("PRAGMA table_info(annotations)").all() as Array<{ name: string }>;
+  const colNames = new Set(cols.map((c) => c.name));
+  if (!colNames.has("drawing_context")) {
+    db.exec("ALTER TABLE annotations ADD COLUMN drawing_context TEXT");
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -223,6 +231,7 @@ function rowToAnnotation(row: Record<string, unknown>): Annotation {
     resolvedAt: row.resolved_at as string | undefined,
     resolvedBy: row.resolved_by as Annotation["resolvedBy"],
     authorId: row.author_id as string | undefined,
+    drawingContext: row.drawing_context ? JSON.parse(row.drawing_context as string) : undefined,
   };
 }
 
@@ -261,13 +270,13 @@ export function createSQLiteStore(dbPath?: string): AFSStore {
         selected_text, bounding_box, nearby_text, css_classes, nearby_elements,
         computed_styles, full_path, accessibility, is_multi_select, is_fixed,
         react_components, url, intent, severity, status, thread, created_at,
-        updated_at, resolved_at, resolved_by, author_id
+        updated_at, resolved_at, resolved_by, author_id, drawing_context
       ) VALUES (
         @id, @sessionId, @x, @y, @comment, @element, @elementPath, @timestamp,
         @selectedText, @boundingBox, @nearbyText, @cssClasses, @nearbyElements,
         @computedStyles, @fullPath, @accessibility, @isMultiSelect, @isFixed,
         @reactComponents, @url, @intent, @severity, @status, @thread, @createdAt,
-        @updatedAt, @resolvedAt, @resolvedBy, @authorId
+        @updatedAt, @resolvedAt, @resolvedBy, @authorId, @drawingContext
       )
     `),
     getAnnotation: db.prepare("SELECT * FROM annotations WHERE id = ?"),
@@ -423,6 +432,7 @@ export function createSQLiteStore(dbPath?: string): AFSStore {
         resolvedAt: null,
         resolvedBy: null,
         authorId: annotation.authorId ?? null,
+        drawingContext: annotation.drawingContext ? JSON.stringify(annotation.drawingContext) : null,
       });
 
       const event = eventBus.emit("annotation.created", sessionId, annotation);

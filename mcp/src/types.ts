@@ -22,6 +22,20 @@ export type Annotation = {
   isFixed?: boolean; // true if element has fixed/sticky positioning (marker stays fixed)
   reactComponents?: string; // React component hierarchy (e.g. "<App> <Dashboard> <Button>")
 
+  // Drawing annotation context (rich gesture + element data)
+  drawingContext?: {
+    gesture: string; // "Arrow" | "Box" | "Circle" | "Underline" | "Strikethrough" | "Drawing"
+    screenshot?: string; // JPEG data URL (stripped on server, kept for client-side use)
+    screenshotPath?: string; // File path on disk (set by server on receipt)
+    primary?: { name: string; reactComponents?: string; cssClasses?: string; nearbyText?: string };
+    secondary?: { name: string; reactComponents?: string; cssClasses?: string };
+    contained?: Array<{ name: string; reactComponents?: string; cssClasses?: string }>;
+    textContent?: string;
+    strokeStart?: { x: number; y: number };
+    strokeEnd?: { x: number; y: number };
+    strokeBBox?: { x: number; y: number; width: number; height: number };
+  };
+
   // Protocol fields (added when syncing to server)
   sessionId?: string;
   url?: string;

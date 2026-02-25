@@ -14,6 +14,9 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { ActionRequest } from "../types.js";
+import { mkdirSync, existsSync, writeFileSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
 
 // -----------------------------------------------------------------------------
 // Configuration
@@ -116,6 +119,10 @@ const ReplySchema = z.object({
 
 const GetSessionSchema = z.object({
   sessionId: z.string().describe("The session ID to get"),
+});
+
+const GetAnnotationSchema = z.object({
+  annotationId: z.string().describe("The annotation ID to get"),
 });
 
 const WatchAnnotationsSchema = z.object({
@@ -250,6 +257,22 @@ export const TOOLS = [
     },
   },
   {
+    name: "agentation_get_annotation",
+    description:
+      "Get full details of a single annotation by ID, including screenshot file path if available. " +
+      "Use this to get complete context before actioning an annotation.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        annotationId: {
+          type: "string",
+          description: "The annotation ID to get",
+        },
+      },
+      required: ["annotationId"],
+    },
+  },
+  {
     name: "agentation_watch_annotations",
     description:
       "Block until new annotations appear, then collect a batch and return them. " +
@@ -291,6 +314,31 @@ type Session = {
   createdAt: string;
 };
 
+type DrawingElement = {
+  name: string;
+  path?: string;
+  reactComponents?: string;
+  cssClasses?: string;
+  nearbyText?: string;
+  textAtPoint?: string;
+  computedStyles?: string;
+  accessibility?: string;
+  boundingBox?: { x: number; y: number; width: number; height: number };
+};
+
+type DrawingContextMcp = {
+  gesture: string;
+  screenshot?: string;
+  screenshotPath?: string;
+  primary?: DrawingElement;
+  secondary?: DrawingElement;
+  contained?: DrawingElement[];
+  textContent?: string;
+  strokeStart?: { x: number; y: number };
+  strokeEnd?: { x: number; y: number };
+  strokeBBox?: { x: number; y: number; width: number; height: number };
+};
+
 type Annotation = {
   id: string;
   sessionId: string;
@@ -302,9 +350,41 @@ type Annotation = {
   severity?: string;
   timestamp?: number;
   nearbyText?: string;
+  cssClasses?: string;
+  computedStyles?: string;
+  fullPath?: string;
+  nearbyElements?: string;
+  accessibility?: string;
   reactComponents?: string;
+  selectedText?: string;
   status: string;
+  drawingContext?: DrawingContextMcp;
 };
+
+// -----------------------------------------------------------------------------
+// Screenshot file utilities
+// -----------------------------------------------------------------------------
+
+export function getScreenshotDir(): string {
+  const dir = join(homedir(), ".agentation", "screenshots");
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+}
+
+export function saveScreenshotToDisk(annotationId: string, dataUrl: string): string | null {
+  try {
+    const ext = dataUrl.startsWith("data:image/png") ? "png" : "jpg";
+    const base64 = dataUrl.replace(/^data:image\/[^;]+;base64,/, "");
+    const buffer = Buffer.from(base64, "base64");
+    const filePath = join(getScreenshotDir(), `${annotationId}.${ext}`);
+    writeFileSync(filePath, buffer);
+    return filePath;
+  } catch {
+    return null;
+  }
+}
 
 type SessionWithAnnotations = Session & {
   annotations: Annotation[];
@@ -319,8 +399,12 @@ type PendingResponse = {
 // Tool Handlers
 // -----------------------------------------------------------------------------
 
+type ContentBlock =
+  | { type: "text"; text: string }
+  | { type: "image"; data: string; mimeType: string };
+
 type ToolResult = {
-  content: Array<{ type: "text"; text: string }>;
+  content: ContentBlock[];
   isError?: boolean;
 };
 
@@ -335,6 +419,189 @@ export function error(message: string): ToolResult {
     content: [{ type: "text", text: message }],
     isError: true,
   };
+}
+
+/**
+ * Get a directional arrow symbol from stroke start/end points.
+ */
+function getStrokeDirection(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): string {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+  if (angle >= -22.5 && angle < 22.5) return "→";
+  if (angle >= 22.5 && angle < 67.5) return "↘";
+  if (angle >= 67.5 && angle < 112.5) return "↓";
+  if (angle >= 112.5 && angle < 157.5) return "↙";
+  if (angle >= -67.5 && angle < -22.5) return "↗";
+  if (angle >= -112.5 && angle < -67.5) return "↑";
+  if (angle >= -157.5 && angle < -112.5) return "↖";
+  return "←";
+}
+
+/**
+ * Check if an element is an SVG implementation detail (not a meaningful target).
+ */
+function isSvgInternal(el: DrawingElement): boolean {
+  return /\bgraphic in\b|^icon in /.test(el.name) ||
+    /^<.*<motion\./.test(el.name);
+}
+
+/**
+ * Check if an element is too broad to be useful (e.g. the entire page or article).
+ */
+function isOverlyBroadElement(el: DrawingElement): boolean {
+  if (!el.boundingBox) return false;
+  return el.boundingBox.height > 2000 || el.boundingBox.width > 1200;
+}
+
+/**
+ * Deduplicate contained elements: skip broad parents when more specific children are listed.
+ */
+function dedupeContained(elements: DrawingElement[]): DrawingElement[] {
+  const meaningful = elements.filter((el) => !isOverlyBroadElement(el) && !isSvgInternal(el));
+  return meaningful.filter((el) => {
+    if (!el.boundingBox) return true;
+    const bb = el.boundingBox;
+    return !meaningful.some((other) => {
+      if (other === el || !other.boundingBox) return false;
+      const ob = other.boundingBox;
+      return (
+        ob.x >= bb.x && ob.y >= bb.y &&
+        ob.x + ob.width <= bb.x + bb.width &&
+        ob.y + ob.height <= bb.y + bb.height &&
+        (ob.width < bb.width || ob.height < bb.height)
+      );
+    });
+  });
+}
+
+/**
+ * Strip [before: "..."] / [after: "..."] context markers from nearbyText.
+ */
+function cleanNearbyText(text: string): string {
+  return text.replace(/\s*\[(?:before|after):\s*"[^"]*"\]\s*/g, "").trim();
+}
+
+/**
+ * Format a drawing element for MCP output (used in From/To/Contains sections).
+ */
+function formatDrawingElementMcp(el: DrawingElement, indent: string): string {
+  let out = `${indent}- **${el.name}**\n`;
+  if (el.nearbyText) {
+    const clean = cleanNearbyText(el.nearbyText);
+    if (clean) out += `${indent}  Content: "${clean.slice(0, 80)}"\n`;
+  }
+  if (el.cssClasses) out += `${indent}  Classes: \`${el.cssClasses}\`\n`;
+  if (el.reactComponents) out += `${indent}  React: \`${el.reactComponents}\`\n`;
+  return out;
+}
+
+/**
+ * Format a single annotation for MCP response.
+ * Screenshots are saved to disk and referenced by file path.
+ * All annotations get enriched text metadata matching the copy markdown format.
+ */
+function formatAnnotationForMcp(a: Annotation): ContentBlock[] {
+  const dc = a.drawingContext;
+  const lines: string[] = [];
+
+  lines.push(`Annotation: ${a.id}`);
+
+  if (dc) {
+    // Drawing annotation — gesture-specific formatting
+
+    // Screenshot path (saved to disk at annotation ingestion time in http.ts)
+    if (dc.screenshotPath) {
+      lines.push(`Screenshot: ${dc.screenshotPath}`);
+    }
+
+    // Pre-compute deduped contained for Box/Circle (used in both description and element sections)
+    const isBoxOrCircle = dc.gesture === "Box" || dc.gesture === "Circle";
+    const dedupedContained = isBoxOrCircle ? dedupeContained(dc.contained || []) : [];
+
+    // Gesture description matching the copy-to-markdown format
+    let gestureDesc = dc.gesture;
+    if (dc.gesture === "Arrow") {
+      const fromName = dc.secondary?.name || "element";
+      const toName = dc.primary?.name || "element";
+      const rawText = dc.primary?.nearbyText || "";
+      const cleanText = cleanNearbyText(rawText);
+      const toText = cleanText ? ` "${cleanText.slice(0, 40)}"` : "";
+      const dir = dc.strokeStart && dc.strokeEnd
+        ? ` (${getStrokeDirection(dc.strokeStart, dc.strokeEnd)})`
+        : "";
+      gestureDesc = `Arrow${dir} drawn from ${fromName} to ${toName}${toText}`;
+    } else if (isBoxOrCircle) {
+      const names = dedupedContained.map((el) => el.name).slice(0, 2);
+      if (names.length > 0) {
+        gestureDesc = `${dc.gesture} drawn around ${names.join(", ")}`;
+      } else {
+        gestureDesc = `${dc.gesture} drawn around ${dc.primary?.name || "element"}`;
+      }
+    } else if (dc.gesture === "Line") {
+      const text = dc.textContent ? ` near "${dc.textContent.slice(0, 60)}"` : "";
+      gestureDesc = `Line drawn${text}`;
+    } else if (dc.gesture === "Underline") {
+      // Backwards compat with old annotations
+      const text = dc.textContent ? ` "${dc.textContent.slice(0, 60)}"` : "";
+      gestureDesc = `Underlined text${text}`;
+    } else if (dc.gesture === "Strikethrough") {
+      // Backwards compat with old annotations
+      const text = dc.textContent ? ` "${dc.textContent.slice(0, 60)}"` : "";
+      gestureDesc = `Struck through text${text}`;
+    } else {
+      gestureDesc = `Freehand drawing near ${dc.primary?.name || "element"}`;
+    }
+    lines.push(`Gesture: ${gestureDesc}`);
+
+    // Gesture-specific element sections
+    if (dc.gesture === "Arrow") {
+      if (dc.secondary) {
+        lines.push(`From:`);
+        lines.push(formatDrawingElementMcp(dc.secondary, "  ").trimEnd());
+      }
+      if (dc.primary) {
+        lines.push(`To:`);
+        lines.push(formatDrawingElementMcp(dc.primary, "  ").trimEnd());
+      }
+    } else if (isBoxOrCircle) {
+      if (dedupedContained.length > 0) {
+        lines.push(`Contains:`);
+        for (const el of dedupedContained) {
+          lines.push(formatDrawingElementMcp(el, "  ").trimEnd());
+        }
+      } else if (dc.primary) {
+        lines.push(`Target:`);
+        lines.push(formatDrawingElementMcp(dc.primary, "  ").trimEnd());
+      }
+    } else if (dc.gesture === "Line" || dc.gesture === "Underline" || dc.gesture === "Strikethrough") {
+      if (dc.textContent) lines.push(`Target text: "${dc.textContent}"`);
+      if (dc.primary) {
+        lines.push(`In:`);
+        lines.push(formatDrawingElementMcp(dc.primary, "  ").trimEnd());
+      }
+    } else {
+      if (dc.primary) {
+        lines.push(`Near:`);
+        lines.push(formatDrawingElementMcp(dc.primary, "  ").trimEnd());
+      }
+    }
+  } else {
+    // Non-drawing annotation — element metadata
+    lines.push(`Element: ${a.element}`);
+    if (a.cssClasses) lines.push(`Classes: ${a.cssClasses}`);
+    if (a.reactComponents) lines.push(`React: ${a.reactComponents}`);
+    if (a.nearbyText) lines.push(`Context: ${a.nearbyText.slice(0, 100)}`);
+    if (a.selectedText) lines.push(`Selected text: "${a.selectedText}"`);
+  }
+
+  lines.push(`Feedback: ${a.comment}`);
+  if (a.url) lines.push(`Page: ${a.url}`);
+
+  return [{ type: "text", text: lines.join("\n") }];
 }
 
 /**
@@ -517,40 +784,50 @@ export async function handleTool(name: string, args: unknown): Promise<ToolResul
     case "agentation_get_pending": {
       const { sessionId } = GetPendingSchema.parse(args);
       const response = await httpGet<PendingResponse>(`/sessions/${sessionId}/pending`);
-      return success({
-        count: response.count,
-        annotations: response.annotations.map((a) => ({
-          id: a.id,
-          comment: a.comment,
-          element: a.element,
-          elementPath: a.elementPath,
-          url: a.url,
-          intent: a.intent,
-          severity: a.severity,
-          timestamp: a.timestamp,
-          nearbyText: a.nearbyText,
-          reactComponents: a.reactComponents,
-        })),
-      });
+      const content: ContentBlock[] = [{ type: "text", text: `${response.count} pending annotation(s):` }];
+      for (const a of response.annotations) {
+        if (a.drawingContext) {
+          content.push(...formatAnnotationForMcp(a));
+        } else {
+          content.push({ type: "text", text: JSON.stringify({
+            id: a.id,
+            comment: a.comment,
+            element: a.element,
+            elementPath: a.elementPath,
+            url: a.url,
+            intent: a.intent,
+            severity: a.severity,
+            timestamp: a.timestamp,
+            nearbyText: a.nearbyText,
+            reactComponents: a.reactComponents,
+          }) });
+        }
+      }
+      return { content };
     }
 
     case "agentation_get_all_pending": {
       const response = await httpGet<PendingResponse>("/pending");
-      return success({
-        count: response.count,
-        annotations: response.annotations.map((a) => ({
-          id: a.id,
-          comment: a.comment,
-          element: a.element,
-          elementPath: a.elementPath,
-          url: a.url,
-          intent: a.intent,
-          severity: a.severity,
-          timestamp: a.timestamp,
-          nearbyText: a.nearbyText,
-          reactComponents: a.reactComponents,
-        })),
-      });
+      const content: ContentBlock[] = [{ type: "text", text: `${response.count} pending annotation(s):` }];
+      for (const a of response.annotations) {
+        if (a.drawingContext) {
+          content.push(...formatAnnotationForMcp(a));
+        } else {
+          content.push({ type: "text", text: JSON.stringify({
+            id: a.id,
+            comment: a.comment,
+            element: a.element,
+            elementPath: a.elementPath,
+            url: a.url,
+            intent: a.intent,
+            severity: a.severity,
+            timestamp: a.timestamp,
+            nearbyText: a.nearbyText,
+            reactComponents: a.reactComponents,
+          }) });
+        }
+      }
+      return { content };
     }
 
     case "agentation_acknowledge": {
@@ -624,6 +901,19 @@ export async function handleTool(name: string, args: unknown): Promise<ToolResul
       }
     }
 
+    case "agentation_get_annotation": {
+      const { annotationId } = GetAnnotationSchema.parse(args);
+      try {
+        const annotation = await httpGet<Annotation>(`/annotations/${annotationId}`);
+        return { content: formatAnnotationForMcp(annotation) };
+      } catch (err) {
+        if ((err as Error).message.includes("404")) {
+          return error(`Annotation not found: ${annotationId}`);
+        }
+        throw err;
+      }
+    }
+
     case "agentation_watch_annotations": {
       const parsed = WatchAnnotationsSchema.parse(args);
       const sessionId = parsed.sessionId;
@@ -638,23 +928,27 @@ export async function handleTool(name: string, args: unknown): Promise<ToolResul
         const pending = await httpGet<PendingResponse>(pendingPath);
         if (pending.count > 0) {
           const sessions = [...new Set(pending.annotations.map((a) => a.sessionId))];
-          return success({
-            timeout: false,
-            count: pending.count,
-            sessions,
-            annotations: pending.annotations.map((a) => ({
-              id: a.id,
-              comment: a.comment,
-              element: a.element,
-              elementPath: a.elementPath,
-              url: a.url,
-              intent: a.intent,
-              severity: a.severity,
-              timestamp: a.timestamp,
-              nearbyText: a.nearbyText,
-              reactComponents: a.reactComponents,
-            })),
-          });
+          const header = JSON.stringify({ timeout: false, count: pending.count, sessions }, null, 2);
+          const content: ContentBlock[] = [{ type: "text", text: header }];
+          for (const a of pending.annotations) {
+            if (a.drawingContext) {
+              content.push(...formatAnnotationForMcp(a));
+            } else {
+              content.push({ type: "text", text: JSON.stringify({
+                id: a.id,
+                comment: a.comment,
+                element: a.element,
+                elementPath: a.elementPath,
+                url: a.url,
+                intent: a.intent,
+                severity: a.severity,
+                timestamp: a.timestamp,
+                nearbyText: a.nearbyText,
+                reactComponents: a.reactComponents,
+              }) });
+            }
+          }
+          return { content };
         }
       } catch (err) {
         console.error("[MCP] Pending drain failed, falling through to SSE watch:", err);
@@ -667,24 +961,29 @@ export async function handleTool(name: string, args: unknown): Promise<ToolResul
       );
 
       switch (result.type) {
-        case "annotations":
-          return success({
-            timeout: false,
-            count: result.annotations.length,
-            sessions: result.sessions,
-            annotations: result.annotations.map((a) => ({
-              id: a.id,
-              comment: a.comment,
-              element: a.element,
-              elementPath: a.elementPath,
-              url: a.url,
-              intent: a.intent,
-              severity: a.severity,
-              timestamp: a.timestamp,
-              nearbyText: a.nearbyText,
-              reactComponents: a.reactComponents,
-            })),
-          });
+        case "annotations": {
+          const header = JSON.stringify({ timeout: false, count: result.annotations.length, sessions: result.sessions }, null, 2);
+          const content: ContentBlock[] = [{ type: "text", text: header }];
+          for (const a of result.annotations) {
+            if (a.drawingContext) {
+              content.push(...formatAnnotationForMcp(a));
+            } else {
+              content.push({ type: "text", text: JSON.stringify({
+                id: a.id,
+                comment: a.comment,
+                element: a.element,
+                elementPath: a.elementPath,
+                url: a.url,
+                intent: a.intent,
+                severity: a.severity,
+                timestamp: a.timestamp,
+                nearbyText: a.nearbyText,
+                reactComponents: a.reactComponents,
+              }) });
+            }
+          }
+          return { content };
+        }
         case "timeout":
           return success({
             timeout: true,
