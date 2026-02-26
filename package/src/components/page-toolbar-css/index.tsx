@@ -3755,7 +3755,8 @@ export function PageFeedbackToolbarCSS({
 
       // Sync to server (non-blocking, but update local ID with server's ID)
       if (endpoint && currentSessionId) {
-        syncAnnotation(endpoint, currentSessionId, newAnnotation)
+        const syncDescription = formatSingleAnnotation(newAnnotation, annotationsRef.current.length, "standard");
+        syncAnnotation(endpoint, currentSessionId, { ...newAnnotation, description: syncDescription })
           .then((serverAnnotation) => {
             // Update local annotation with server-assigned ID
             if (serverAnnotation.id !== newAnnotation.id) {
@@ -4040,6 +4041,7 @@ export function PageFeedbackToolbarCSS({
       if (endpoint) {
         updateAnnotationOnServer(endpoint, editingAnnotation.id, {
           comment: newComment,
+          description,
         }).catch((error) => {
           console.warn(
             "[Agentation] Failed to update annotation on server:",
