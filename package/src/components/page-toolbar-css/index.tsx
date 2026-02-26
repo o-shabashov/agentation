@@ -1764,7 +1764,12 @@ export function PageFeedbackToolbarCSS({
 
               const syncedAnnotations = results.map((result, i) => {
                 if (result.status === "fulfilled") {
-                  return result.value;
+                  const serverAnn = result.value;
+                  // Preserve local screenshot base64 (server strips it after saving to disk)
+                  if (localToMerge[i].drawingContext?.screenshot && serverAnn.drawingContext && !serverAnn.drawingContext.screenshot) {
+                    serverAnn.drawingContext.screenshot = localToMerge[i].drawingContext.screenshot;
+                  }
+                  return serverAnn;
                 }
                 console.warn(
                   "[Agentation] Failed to sync annotation:",
@@ -1785,10 +1790,26 @@ export function PageFeedbackToolbarCSS({
                 session.id,
               );
             } else {
-              setAnnotations(session.annotations);
+              // Preserve local screenshot base64 into server annotations
+              const screenshotsByStrokeId = new Map<string, string>();
+              for (const a of allLocalAnnotations) {
+                if (a.strokeId && a.drawingContext?.screenshot) {
+                  screenshotsByStrokeId.set(a.strokeId, a.drawingContext.screenshot);
+                }
+              }
+              const merged = session.annotations.map((a: Annotation) => {
+                if (a.strokeId && a.drawingContext && !a.drawingContext.screenshot) {
+                  const screenshot = screenshotsByStrokeId.get(a.strokeId);
+                  if (screenshot) {
+                    return { ...a, drawingContext: { ...a.drawingContext, screenshot } };
+                  }
+                }
+                return a;
+              });
+              setAnnotations(merged);
               saveAnnotationsWithSyncMarker(
                 pathname,
-                session.annotations,
+                merged,
                 session.id,
               );
             }
@@ -1853,7 +1874,12 @@ export function PageFeedbackToolbarCSS({
                   // Mark synced annotations and update local state for current page
                   const syncedAnnotations = results.map((result, i) => {
                     if (result.status === "fulfilled") {
-                      return result.value;
+                      const serverAnn = result.value;
+                      // Preserve local screenshot base64 (server strips it after saving to disk)
+                      if (unsyncedAnnotations[i].drawingContext?.screenshot && serverAnn.drawingContext && !serverAnn.drawingContext.screenshot) {
+                        serverAnn.drawingContext.screenshot = unsyncedAnnotations[i].drawingContext.screenshot;
+                      }
+                      return serverAnn;
                     }
                     console.warn(
                       "[Agentation] Failed to sync annotation:",
