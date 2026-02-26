@@ -965,6 +965,102 @@ function formatDrawingContext(ctx: DrawingContext, detailLevel: OutputDetailLeve
   return out;
 }
 
+/**
+ * Format a single annotation into markdown output.
+ * Used by generateOutput() for batch formatting and by webhook payloads for per-event descriptions.
+ */
+function formatSingleAnnotation(
+  a: Annotation,
+  index: number,
+  detailLevel: OutputDetailLevel,
+): string {
+  let out = "";
+  if (detailLevel === "compact") {
+    out += `${index + 1}. **${a.element}**: ${a.comment}`;
+    if (a.selectedText) {
+      out += ` (re: "${a.selectedText.slice(0, 30)}${a.selectedText.length > 30 ? "..." : ""}")`;
+    }
+    out += "\n";
+  } else if (detailLevel === "forensic") {
+    // Forensic mode - order matches output page example
+    out += `### ${index + 1}. ${a.element}\n`;
+    if (a.drawingContext) {
+      out += formatDrawingContext(a.drawingContext, detailLevel);
+    }
+    if (a.isMultiSelect && a.fullPath) {
+      out += `*Forensic data shown for first element of selection*\n`;
+    }
+    if (!a.drawingContext) {
+      // Non-drawing annotations: show standard element info
+      if (a.fullPath) {
+        out += `**Full DOM Path:** ${a.fullPath}\n`;
+      }
+      if (a.cssClasses) {
+        out += `**CSS Classes:** ${a.cssClasses}\n`;
+      }
+      if (a.boundingBox) {
+        out += `**Position:** x:${Math.round(a.boundingBox.x)}, y:${Math.round(a.boundingBox.y)} (${Math.round(a.boundingBox.width)}×${Math.round(a.boundingBox.height)}px)\n`;
+      }
+    }
+    out += `**Annotation at:** ${a.x.toFixed(1)}% from left, ${Math.round(a.y)}px from top\n`;
+    if (a.selectedText) {
+      out += `**Selected text:** "${a.selectedText}"\n`;
+    }
+    if (a.nearbyText && !a.selectedText && !a.drawingContext) {
+      out += `**Context:** ${a.nearbyText.slice(0, 100)}\n`;
+    }
+    if (!a.drawingContext) {
+      if (a.computedStyles) {
+        out += `**Computed Styles:** ${a.computedStyles}\n`;
+      }
+      if (a.accessibility) {
+        out += `**Accessibility:** ${a.accessibility}\n`;
+      }
+      if (a.nearbyElements) {
+        out += `**Nearby Elements:** ${a.nearbyElements}\n`;
+      }
+      if (a.reactComponents) {
+        out += `**React:** ${a.reactComponents}\n`;
+      }
+    }
+    out += `**Feedback:** ${a.comment}\n\n`;
+  } else {
+    // Standard and detailed modes
+    out += `### ${index + 1}. ${a.element}\n`;
+    if (a.drawingContext) {
+      out += formatDrawingContext(a.drawingContext, detailLevel);
+    } else {
+      out += `**Location:** ${a.elementPath}\n`;
+
+      // React components in both standard and detailed
+      if (a.reactComponents) {
+        out += `**React:** ${a.reactComponents}\n`;
+      }
+
+      if (detailLevel === "detailed") {
+        if (a.cssClasses) {
+          out += `**Classes:** ${a.cssClasses}\n`;
+        }
+
+        if (a.boundingBox) {
+          out += `**Position:** ${Math.round(a.boundingBox.x)}px, ${Math.round(a.boundingBox.y)}px (${Math.round(a.boundingBox.width)}×${Math.round(a.boundingBox.height)}px)\n`;
+        }
+      }
+    }
+
+    if (a.selectedText) {
+      out += `**Selected text:** "${a.selectedText}"\n`;
+    }
+
+    if (detailLevel === "detailed" && a.nearbyText && !a.selectedText && !a.drawingContext) {
+      out += `**Context:** ${a.nearbyText.slice(0, 100)}\n`;
+    }
+
+    out += `**Feedback:** ${a.comment}\n\n`;
+  }
+  return out;
+}
+
 function generateOutput(
   annotations: Annotation[],
   pathname: string,
@@ -997,92 +1093,130 @@ function generateOutput(
   output += "\n";
 
   annotations.forEach((a, i) => {
-    if (detailLevel === "compact") {
-      output += `${i + 1}. **${a.element}**: ${a.comment}`;
-      if (a.selectedText) {
-        output += ` (re: "${a.selectedText.slice(0, 30)}${a.selectedText.length > 30 ? "..." : ""}")`;
-      }
-      output += "\n";
-    } else if (detailLevel === "forensic") {
-      // Forensic mode - order matches output page example
-      output += `### ${i + 1}. ${a.element}\n`;
-      if (a.drawingContext) {
-        output += formatDrawingContext(a.drawingContext, detailLevel);
-      }
-      if (a.isMultiSelect && a.fullPath) {
-        output += `*Forensic data shown for first element of selection*\n`;
-      }
-      if (!a.drawingContext) {
-        // Non-drawing annotations: show standard element info
-        if (a.fullPath) {
-          output += `**Full DOM Path:** ${a.fullPath}\n`;
-        }
-        if (a.cssClasses) {
-          output += `**CSS Classes:** ${a.cssClasses}\n`;
-        }
-        if (a.boundingBox) {
-          output += `**Position:** x:${Math.round(a.boundingBox.x)}, y:${Math.round(a.boundingBox.y)} (${Math.round(a.boundingBox.width)}×${Math.round(a.boundingBox.height)}px)\n`;
-        }
-      }
-      output += `**Annotation at:** ${a.x.toFixed(1)}% from left, ${Math.round(a.y)}px from top\n`;
-      if (a.selectedText) {
-        output += `**Selected text:** "${a.selectedText}"\n`;
-      }
-      if (a.nearbyText && !a.selectedText && !a.drawingContext) {
-        output += `**Context:** ${a.nearbyText.slice(0, 100)}\n`;
-      }
-      if (!a.drawingContext) {
-        if (a.computedStyles) {
-          output += `**Computed Styles:** ${a.computedStyles}\n`;
-        }
-        if (a.accessibility) {
-          output += `**Accessibility:** ${a.accessibility}\n`;
-        }
-        if (a.nearbyElements) {
-          output += `**Nearby Elements:** ${a.nearbyElements}\n`;
-        }
-        if (a.reactComponents) {
-          output += `**React:** ${a.reactComponents}\n`;
-        }
-      }
-      output += `**Feedback:** ${a.comment}\n\n`;
-    } else {
-      // Standard and detailed modes
-      output += `### ${i + 1}. ${a.element}\n`;
-      if (a.drawingContext) {
-        output += formatDrawingContext(a.drawingContext, detailLevel);
-      } else {
-        output += `**Location:** ${a.elementPath}\n`;
-
-        // React components in both standard and detailed
-        if (a.reactComponents) {
-          output += `**React:** ${a.reactComponents}\n`;
-        }
-
-        if (detailLevel === "detailed") {
-          if (a.cssClasses) {
-            output += `**Classes:** ${a.cssClasses}\n`;
-          }
-
-          if (a.boundingBox) {
-            output += `**Position:** ${Math.round(a.boundingBox.x)}px, ${Math.round(a.boundingBox.y)}px (${Math.round(a.boundingBox.width)}×${Math.round(a.boundingBox.height)}px)\n`;
-          }
-        }
-      }
-
-      if (a.selectedText) {
-        output += `**Selected text:** "${a.selectedText}"\n`;
-      }
-
-      if (detailLevel === "detailed" && a.nearbyText && !a.selectedText && !a.drawingContext) {
-        output += `**Context:** ${a.nearbyText.slice(0, 100)}\n`;
-      }
-
-      output += `**Feedback:** ${a.comment}\n\n`;
-    }
+    output += formatSingleAnnotation(a, i, detailLevel);
   });
 
   return output.trim();
+}
+
+/**
+ * Describe standalone strokes (not linked to any annotation) as markdown.
+ * Hides the draw canvas temporarily to sample page elements underneath strokes.
+ */
+function describeStandaloneStrokes(
+  drawStrokes: DrawStroke[],
+  annotations: Annotation[],
+  drawCanvasRef: React.RefObject<HTMLCanvasElement | null>,
+): string {
+  if (drawStrokes.length === 0) return "";
+
+  // Collect drawing indices that have linked annotations (skip those in standalone section)
+  const linkedDrawingIndices = new Set<number>();
+  for (const a of annotations) {
+    if (a.drawingIndex != null) linkedDrawingIndices.add(a.drawingIndex);
+  }
+
+  // Temporarily hide the draw canvas so elementFromPoint hits real page elements
+  const canvas = drawCanvasRef.current;
+  if (canvas) canvas.style.visibility = "hidden";
+
+  const strokeDescriptions: string[] = [];
+  const scrollY = window.scrollY;
+  for (let strokeIdx = 0; strokeIdx < drawStrokes.length; strokeIdx++) {
+    // Skip strokes that have a linked annotation — their info is in the annotation output
+    if (linkedDrawingIndices.has(strokeIdx)) continue;
+    const stroke = drawStrokes[strokeIdx];
+    if (stroke.points.length < 2) continue;
+
+    // Get viewport coords for analysis (fixed strokes are already in viewport coords)
+    const viewportPoints = stroke.fixed
+      ? stroke.points
+      : stroke.points.map(p => ({ x: p.x, y: p.y - scrollY }));
+
+    // Bounding box (viewport coords)
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const p of viewportPoints) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+    const bboxW = maxX - minX;
+    const bboxH = maxY - minY;
+    const bboxDiag = Math.hypot(bboxW, bboxH);
+
+    // Start/end analysis
+    const start = viewportPoints[0];
+    const end = viewportPoints[viewportPoints.length - 1];
+    const startEndDist = Math.hypot(end.x - start.x, end.y - start.y);
+
+    // Gesture classification
+    let gesture: "circle" | "line" | "arrow" | "drawing";
+    const closedLoop = startEndDist < bboxDiag * 0.35;
+    const aspectRatio = bboxW / Math.max(bboxH, 1);
+
+    if (closedLoop && bboxDiag > 20) {
+      const ar = Math.max(aspectRatio, 1 / Math.max(aspectRatio, 0.01));
+      gesture = ar < 1.4 ? "circle" : "drawing";
+    } else if (!closedLoop && aspectRatio > 3 && bboxH < 40) {
+      gesture = "line";
+    } else if (startEndDist > bboxDiag * 0.5) {
+      gesture = "arrow";
+    } else {
+      gesture = "drawing";
+    }
+
+    // Sample elements along the stroke
+    const sampleCount = Math.min(10, viewportPoints.length);
+    const step = Math.max(1, Math.floor(viewportPoints.length / sampleCount));
+    const seenElements = new Set<HTMLElement>();
+    const elementNames: string[] = [];
+
+    const samplePoints = [start];
+    for (let i = step; i < viewportPoints.length - 1; i += step) {
+      samplePoints.push(viewportPoints[i]);
+    }
+    samplePoints.push(end);
+
+    for (const p of samplePoints) {
+      const el = deepElementFromPoint(p.x, p.y);
+      if (!el || seenElements.has(el)) continue;
+      if (closestCrossingShadow(el, "[data-feedback-toolbar]")) continue;
+      seenElements.add(el);
+      const { name } = identifyElement(el);
+      if (!elementNames.includes(name)) {
+        elementNames.push(name);
+      }
+    }
+
+    // Format description
+    const region = `${Math.round(minX)},${Math.round(minY)} → ${Math.round(maxX)},${Math.round(maxY)}`;
+    let desc: string;
+
+    if (gesture === "circle" && elementNames.length > 0) {
+      desc = `Circled **${elementNames[0]}**${elementNames.length > 1 ? ` (and ${elementNames.slice(1).join(", ")})` : ""} (region: ${region})`;
+    } else if (gesture === "line" && elementNames.length > 0) {
+      desc = `Line near **${elementNames[0]}** (${region})`;
+    } else if (gesture === "arrow" && elementNames.length >= 2) {
+      desc = `Arrow from **${elementNames[0]}** to **${elementNames[elementNames.length - 1]}** (${Math.round(start.x)},${Math.round(start.y)} → ${Math.round(end.x)},${Math.round(end.y)})`;
+    } else if (elementNames.length > 0) {
+      desc = `${gesture === "arrow" ? "Arrow" : "Drawing"} near **${elementNames.join("**, **")}** (region: ${region})`;
+    } else {
+      desc = `Drawing at ${region}`;
+    }
+    strokeDescriptions.push(desc);
+  }
+
+  // Restore canvas
+  if (canvas) canvas.style.visibility = "";
+
+  if (strokeDescriptions.length === 0) return "";
+
+  let out = `\n**Drawings:**\n`;
+  strokeDescriptions.forEach((d, i) => {
+    out += `${i + 1}. ${d}\n`;
+  });
+  return out;
 }
 
 // =============================================================================
@@ -3607,7 +3741,8 @@ export function PageFeedbackToolbarCSS({
 
       // Fire callback
       onAnnotationAdd?.(newAnnotation);
-      fireWebhook("annotation.add", { annotation: newAnnotation });
+      const description = formatSingleAnnotation(newAnnotation, annotationsRef.current.length, "standard");
+      fireWebhook("annotation.add", { annotation: newAnnotation, description });
 
       // Animate out the pending annotation UI
       setPendingExiting(true);
@@ -3720,7 +3855,8 @@ export function PageFeedbackToolbarCSS({
       // Fire callback
       if (deletedAnnotation) {
         onAnnotationDelete?.(deletedAnnotation);
-        fireWebhook("annotation.delete", { annotation: deletedAnnotation });
+        const description = formatSingleAnnotation(deletedAnnotation, deletedIndex, "standard");
+        fireWebhook("annotation.delete", { annotation: deletedAnnotation, description });
       }
 
       // Sync delete to server (non-blocking)
@@ -3896,7 +4032,9 @@ export function PageFeedbackToolbarCSS({
 
       // Fire callback
       onAnnotationUpdate?.(updatedAnnotation);
-      fireWebhook("annotation.update", { annotation: updatedAnnotation });
+      const idx = annotationsRef.current.findIndex(a => a.id === updatedAnnotation.id);
+      const description = formatSingleAnnotation(updatedAnnotation, idx >= 0 ? idx : 0, "standard");
+      fireWebhook("annotation.update", { annotation: updatedAnnotation, description });
 
       // Sync update to server (non-blocking)
       if (endpoint) {
@@ -3996,115 +4134,8 @@ export function PageFeedbackToolbarCSS({
     if (!output && drawStrokes.length === 0) return;
     if (!output) output = `## Page Feedback: ${displayUrl}\n`;
 
-    // Describe draw strokes as text by detecting elements underneath
-    if (drawStrokes.length > 0) {
-      // Collect drawing indices that have linked annotations (skip those in standalone section)
-      const linkedDrawingIndices = new Set<number>();
-      for (const a of annotations) {
-        if (a.drawingIndex != null) linkedDrawingIndices.add(a.drawingIndex);
-      }
-
-      // Temporarily hide the draw canvas so elementFromPoint hits real page elements
-      const canvas = drawCanvasRef.current;
-      if (canvas) canvas.style.visibility = "hidden";
-
-      const strokeDescriptions: string[] = [];
-      const scrollY = window.scrollY;
-      for (let strokeIdx = 0; strokeIdx < drawStrokes.length; strokeIdx++) {
-        // Skip strokes that have a linked annotation — their info is in the annotation output
-        if (linkedDrawingIndices.has(strokeIdx)) continue;
-        const stroke = drawStrokes[strokeIdx];
-        if (stroke.points.length < 2) continue;
-
-        // Get viewport coords for analysis (fixed strokes are already in viewport coords)
-        const viewportPoints = stroke.fixed
-          ? stroke.points
-          : stroke.points.map(p => ({ x: p.x, y: p.y - scrollY }));
-
-        // Bounding box (viewport coords)
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const p of viewportPoints) {
-          minX = Math.min(minX, p.x);
-          minY = Math.min(minY, p.y);
-          maxX = Math.max(maxX, p.x);
-          maxY = Math.max(maxY, p.y);
-        }
-        const bboxW = maxX - minX;
-        const bboxH = maxY - minY;
-        const bboxDiag = Math.hypot(bboxW, bboxH);
-
-        // Start/end analysis
-        const start = viewportPoints[0];
-        const end = viewportPoints[viewportPoints.length - 1];
-        const startEndDist = Math.hypot(end.x - start.x, end.y - start.y);
-
-        // Gesture classification
-        let gesture: "circle" | "line" | "arrow" | "drawing";
-        const closedLoop = startEndDist < bboxDiag * 0.35;
-        const aspectRatio = bboxW / Math.max(bboxH, 1);
-
-        if (closedLoop && bboxDiag > 20) {
-          const ar = Math.max(aspectRatio, 1 / Math.max(aspectRatio, 0.01));
-          gesture = ar < 1.4 ? "circle" : "drawing";
-        } else if (!closedLoop && aspectRatio > 3 && bboxH < 40) {
-          gesture = "line";
-        } else if (startEndDist > bboxDiag * 0.5) {
-          gesture = "arrow";
-        } else {
-          gesture = "drawing";
-        }
-
-        // Sample elements along the stroke
-        const sampleCount = Math.min(10, viewportPoints.length);
-        const step = Math.max(1, Math.floor(viewportPoints.length / sampleCount));
-        const seenElements = new Set<HTMLElement>();
-        const elementNames: string[] = [];
-
-        const samplePoints = [start];
-        for (let i = step; i < viewportPoints.length - 1; i += step) {
-          samplePoints.push(viewportPoints[i]);
-        }
-        samplePoints.push(end);
-
-        for (const p of samplePoints) {
-          const el = deepElementFromPoint(p.x, p.y);
-          if (!el || seenElements.has(el)) continue;
-          if (closestCrossingShadow(el, "[data-feedback-toolbar]")) continue;
-          seenElements.add(el);
-          const { name } = identifyElement(el);
-          if (!elementNames.includes(name)) {
-            elementNames.push(name);
-          }
-        }
-
-        // Format description
-        const region = `${Math.round(minX)},${Math.round(minY)} → ${Math.round(maxX)},${Math.round(maxY)}`;
-        let desc: string;
-
-        if (gesture === "circle" && elementNames.length > 0) {
-          desc = `Circled **${elementNames[0]}**${elementNames.length > 1 ? ` (and ${elementNames.slice(1).join(", ")})` : ""} (region: ${region})`;
-        } else if (gesture === "line" && elementNames.length > 0) {
-          desc = `Line near **${elementNames[0]}** (${region})`;
-        } else if (gesture === "arrow" && elementNames.length >= 2) {
-          desc = `Arrow from **${elementNames[0]}** to **${elementNames[elementNames.length - 1]}** (${Math.round(start.x)},${Math.round(start.y)} → ${Math.round(end.x)},${Math.round(end.y)})`;
-        } else if (elementNames.length > 0) {
-          desc = `${gesture === "arrow" ? "Arrow" : "Drawing"} near **${elementNames.join("**, **")}** (region: ${region})`;
-        } else {
-          desc = `Drawing at ${region}`;
-        }
-        strokeDescriptions.push(desc);
-      }
-
-      // Restore canvas
-      if (canvas) canvas.style.visibility = "";
-
-      if (strokeDescriptions.length > 0) {
-        output += `\n**Drawings:**\n`;
-        strokeDescriptions.forEach((d, i) => {
-          output += `${i + 1}. ${d}\n`;
-        });
-      }
-    }
+    // Append standalone stroke descriptions (strokes not linked to annotations)
+    output += describeStandaloneStrokes(drawStrokes, annotations, drawCanvasRef);
 
     // Collect stored screenshots from drawing annotations
     const screenshotEntries: Array<{ annotationNumber: number; dataUrl: string; color?: string }> = [];
@@ -4173,13 +4204,17 @@ export function PageFeedbackToolbarCSS({
           window.location.search +
           window.location.hash
         : pathname;
-    const output = generateOutput(
+    let output = generateOutput(
       annotations,
       displayUrl,
       settings.outputDetail,
       effectiveReactMode,
     );
-    if (!output) return;
+    if (!output && drawStrokes.length === 0) return;
+    if (!output) output = `## Page Feedback: ${displayUrl}\n`;
+
+    // Append standalone stroke descriptions (strokes not linked to annotations)
+    output += describeStandaloneStrokes(drawStrokes, annotations, drawCanvasRef);
 
     // Fire onSubmit callback
     if (onSubmit) {
@@ -4207,6 +4242,7 @@ export function PageFeedbackToolbarCSS({
     onSubmit,
     fireWebhook,
     annotations,
+    drawStrokes,
     pathname,
     settings.outputDetail,
     effectiveReactMode,
