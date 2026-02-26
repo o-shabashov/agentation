@@ -31,6 +31,9 @@ export type Annotation = {
   strokeId?: string; // Unique ID of linked drawing stroke
   drawingContext?: DrawingContext; // Rich gesture + element data for drawings
 
+  // Formatted markdown description (added for webhooks and server sync)
+  description?: string;
+
   // Protocol fields (added when syncing to server)
   sessionId?: string;
   url?: string;
