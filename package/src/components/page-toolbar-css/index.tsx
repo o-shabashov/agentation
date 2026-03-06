@@ -462,6 +462,27 @@ export function PageFeedbackToolbarCSS({
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [showMarkers, setShowMarkers] = useState(true);
 
+  // Stop native events from bubbling past document.body when they originate
+  // inside the toolbar portal. Without this, clicks on the toolbar propagate to
+  // document-level listeners, triggering "click outside" handlers that close
+  // modals, dropdowns, and drawers. We attach to body (not a wrapper div) so
+  // React's synthetic event delegation (which also listens on body/root) still
+  // works — we only block propagation from body → document/window.
+  const portalWrapperRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const stop = (e: Event) => {
+      const wrapper = portalWrapperRef.current;
+      if (wrapper && wrapper.contains(e.target as Node)) {
+        e.stopPropagation();
+      }
+    };
+    const events = ["mousedown", "click", "pointerdown"] as const;
+    events.forEach((evt) => document.body.addEventListener(evt, stop));
+    return () => {
+      events.forEach((evt) => document.body.removeEventListener(evt, stop));
+    };
+  }, []);
+
   // Unified marker visibility state - controls both toolbar and eye toggle
   const [markersVisible, setMarkersVisible] = useState(false);
   const [markersExiting, setMarkersExiting] = useState(false);
@@ -2952,7 +2973,7 @@ export function PageFeedbackToolbarCSS({
   };
 
   return createPortal(
-    <>
+    <div ref={portalWrapperRef} style={{ display: "contents" }}>
       {/* Toolbar */}
       <div
         className={styles.toolbar}
@@ -4279,7 +4300,7 @@ export function PageFeedbackToolbarCSS({
           )}
         </div>
       )}
-    </>,
+    </div>,
     document.body,
   );
 }
