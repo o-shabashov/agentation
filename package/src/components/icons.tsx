@@ -103,23 +103,11 @@ export const IconListSparkle = ({
 );
 
 // Help/Question mark icon for tooltips
-export const IconHelp = ({ size = 20 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 20 20" fill="none">
-    <circle
-      cx="10"
-      cy="10.5"
-      r="5.25"
-      stroke="currentColor"
-      strokeWidth="1.25"
-    />
-    <path
-      d="M8.5 8.75C8.5 7.92 9.17 7.25 10 7.25C10.83 7.25 11.5 7.92 11.5 8.75C11.5 9.58 10.83 10.25 10 10.25V11"
-      stroke="currentColor"
-      strokeWidth="1.25"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <circle cx="10" cy="13" r="0.75" fill="currentColor" />
+export const IconHelp = ({ size = 20, ...props }: { size?: number } & React.SVGProps<SVGSVGElement>) => (
+  <svg width={size} height={size} viewBox="0 0 20 20" fill="none" {...props}>
+    <circle cx="10" cy="10" r="6" stroke="currentColor" strokeWidth="1.25"/>
+    <path d="M8.24 8.19C8.38 7.78 8.66 7.44 9.03 7.23C9.4 7.01 9.84 6.93 10.26 7C10.68 7.07 11.06 7.29 11.34 7.62C11.61 7.95 11.76 8.36 11.76 8.79152C11.76 10 10 10.6 10 10.6V10.83" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="10" cy="13" r="0.625" fill="currentColor"/>
   </svg>
 );
 
@@ -211,14 +199,14 @@ export const IconCopyAnimated = ({ size = 24, copied = false }: { size?: number;
     <g className={`${s.iconState} ${copied ? s.visibleScaled : s.hiddenScaled}`}>
       <path
         d="M12 20C7.58172 20 4 16.4182 4 12C4 7.58172 7.58172 4 12 4C16.4182 4 20 7.58172 20 12C20 16.4182 16.4182 20 12 20Z"
-        stroke="#22c55e"
+        stroke="var(--agentation-color-green)"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M15 10L11 14.25L9.25 12.25"
-        stroke="#22c55e"
+        stroke="var(--agentation-color-green)"
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -256,14 +244,14 @@ export const IconSendArrow = ({
       <g className={`${s.iconStateFast} ${showCheck ? s.visibleScaled : s.hiddenScaled}`}>
         <path
           d="M12 20C7.58172 20 4 16.4182 4 12C4 7.58172 7.58172 4 12 4C16.4182 4 20 7.58172 20 12C20 16.4182 16.4182 20 12 20Z"
-          stroke="#22c55e"
+          stroke="var(--agentation-color-green)"
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M15 10L11 14.25L9.25 12.25"
-          stroke="#22c55e"
+          stroke="var(--agentation-color-green)"
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -273,18 +261,18 @@ export const IconSendArrow = ({
       <g className={`${s.iconStateFast} ${showError ? s.visibleScaled : s.hiddenScaled}`}>
         <path
           d="M12 20C7.58172 20 4 16.4182 4 12C4 7.58172 7.58172 4 12 4C16.4182 4 20 7.58172 20 12C20 16.4182 16.4182 20 12 20Z"
-          stroke="#ef4444"
+          stroke="var(--agentation-color-red)"
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M12 8V12"
-          stroke="#ef4444"
+          stroke="var(--agentation-color-red)"
           strokeWidth="1.5"
           strokeLinecap="round"
         />
-        <circle cx="12" cy="15" r="0.5" fill="#ef4444" stroke="#ef4444" strokeWidth="1" />
+        <circle cx="12" cy="15" r="0.5" fill="var(--agentation-color-red)" stroke="var(--agentation-color-red)" strokeWidth="1" />
       </g>
     </svg>
   );
