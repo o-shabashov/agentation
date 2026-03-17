@@ -1,4 +1,5 @@
 node_modules/.claude/settings.local.json
 node_modules
-mcp/dist
+# mcp/dist committed in fork for GitHub dependency
+# mcp/dist
 .DS_Store

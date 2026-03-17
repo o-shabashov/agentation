@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
-dist/*
+# dist is committed in fork for GitHub dependency resolution
+# dist/*
 
 # Build output (dist is committed for Vercel deployment)
 # dist/
