@@ -4,6 +4,9 @@
  */
 
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import {
@@ -35,6 +38,15 @@ import type { Annotation, AFSEvent, ActionRequest } from "../types.js";
  */
 function log(message: string): void {
   process.stderr.write(message + "\n");
+}
+
+// Screenshots directory
+const SCREENSHOTS_DIR = join(homedir(), ".agentation", "screenshots");
+
+function ensureScreenshotsDir(): void {
+  if (!existsSync(SCREENSHOTS_DIR)) {
+    mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+  }
 }
 
 // Cloud API configuration
@@ -353,6 +365,11 @@ const getSessionHandler: RouteHandler = async (_req, res, params) => {
     return sendError(res, 404, "Session not found");
   }
 
+  // Filter out resolved/dismissed annotations — clients should not see them on join
+  session.annotations = session.annotations.filter(
+    (a) => a.status !== "resolved" && a.status !== "dismissed"
+  );
+
   sendJson(res, 200, session);
 };
 
@@ -499,6 +516,61 @@ const requestActionHandler: RouteHandler = async (req, res, params) => {
   } catch (err) {
     sendError(res, 400, (err as Error).message);
   }
+};
+
+/**
+ * POST /annotations/:id/screenshot - Upload a screenshot for an annotation.
+ * Accepts raw JPEG body (Content-Type: image/jpeg).
+ */
+const uploadScreenshotHandler: RouteHandler = async (req, res, params) => {
+  const annotation = getAnnotation(params.id);
+  if (!annotation) {
+    return sendError(res, 404, "Annotation not found");
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  const body = Buffer.concat(chunks);
+
+  if (body.length === 0) {
+    return sendError(res, 400, "Empty body");
+  }
+
+  if (body.length > 2 * 1024 * 1024) {
+    return sendError(res, 413, "Screenshot too large (max 2MB)");
+  }
+
+  ensureScreenshotsDir();
+  const filePath = join(SCREENSHOTS_DIR, `${params.id}.jpg`);
+  writeFileSync(filePath, body);
+
+  // Update annotation with screenshot URL
+  const screenshotUrl = `/annotations/${params.id}/screenshot`;
+  updateAnnotation(params.id, { screenshotUrl } as Partial<Annotation>);
+
+  sendJson(res, 201, { screenshotUrl });
+};
+
+/**
+ * GET /annotations/:id/screenshot - Serve a screenshot image.
+ */
+const getScreenshotHandler: RouteHandler = async (_req, res, params) => {
+  const filePath = join(SCREENSHOTS_DIR, `${params.id}.jpg`);
+
+  if (!existsSync(filePath)) {
+    return sendError(res, 404, "Screenshot not found");
+  }
+
+  const data = readFileSync(filePath);
+  res.writeHead(200, {
+    "Content-Type": "image/jpeg",
+    "Content-Length": data.length,
+    "Cache-Control": "public, max-age=31536000, immutable",
+    "Access-Control-Allow-Origin": "*",
+  });
+  res.end(data);
 };
 
 /**
@@ -885,6 +957,18 @@ const routes: Route[] = [
     method: "DELETE",
     pattern: /^\/annotations\/([^/]+)$/,
     handler: deleteAnnotationHandler,
+    paramNames: ["id"],
+  },
+  {
+    method: "POST",
+    pattern: /^\/annotations\/([^/]+)\/screenshot$/,
+    handler: uploadScreenshotHandler,
+    paramNames: ["id"],
+  },
+  {
+    method: "GET",
+    pattern: /^\/annotations\/([^/]+)\/screenshot$/,
+    handler: getScreenshotHandler,
     paramNames: ["id"],
   },
   {

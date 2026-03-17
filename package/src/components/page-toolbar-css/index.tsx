@@ -77,6 +77,7 @@ import {
   findNearestComponentSource,
   formatSourceLocation,
 } from "../../utils/source-location";
+import { captureAndUploadScreenshot } from "../../utils/screenshot";
 import {
   freeze as freezeAll,
   unfreeze as unfreezeAll,
@@ -2312,6 +2313,11 @@ const [settings, setSettings] = useState<ToolbarSettings>(() => {
                 return next;
               });
             }
+            // Capture and upload screenshot (fire-and-forget)
+            captureAndUploadScreenshot(
+              { ...newAnnotation, id: serverAnnotation.id },
+              endpoint
+            );
           })
           .catch((error) => {
             console.warn("[Agentation] Failed to sync annotation:", error);

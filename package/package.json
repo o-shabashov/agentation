@@ -59,5 +59,8 @@
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
     "vitest": "^2.0.0"
+  },
+  "dependencies": {
+    "html2canvas": "^1.4.1"
   }
 }
