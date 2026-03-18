@@ -2290,7 +2290,8 @@ const [settings, setSettings] = useState<ToolbarSettings>(() => {
         setPendingExiting(false);
       }, 150);
 
-      // Clear element highlight overlays (they persist until next mousemove otherwise)
+      // Clear all highlight overlays to prevent stale outlines
+      setHoverInfo(null);
       if (highlightsContainerRef.current) {
         highlightsContainerRef.current.innerHTML = "";
       }
@@ -2345,7 +2346,8 @@ const [settings, setSettings] = useState<ToolbarSettings>(() => {
       setPendingAnnotation(null);
       setPendingExiting(false);
     }, 150); // Match exit animation duration
-    // Clear element highlight overlays
+    // Clear all highlight overlays
+    setHoverInfo(null);
     if (highlightsContainerRef.current) {
       highlightsContainerRef.current.innerHTML = "";
     }

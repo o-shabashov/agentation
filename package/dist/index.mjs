@@ -4385,6 +4385,7 @@ function PageFeedbackToolbarCSS({
         setPendingAnnotation(null);
         setPendingExiting(false);
       }, 150);
+      setHoverInfo(null);
       if (highlightsContainerRef.current) {
         highlightsContainerRef.current.innerHTML = "";
       }
@@ -4427,6 +4428,7 @@ function PageFeedbackToolbarCSS({
       setPendingAnnotation(null);
       setPendingExiting(false);
     }, 150);
+    setHoverInfo(null);
     if (highlightsContainerRef.current) {
       highlightsContainerRef.current.innerHTML = "";
     }
