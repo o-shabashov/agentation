@@ -2290,6 +2290,11 @@ const [settings, setSettings] = useState<ToolbarSettings>(() => {
         setPendingExiting(false);
       }, 150);
 
+      // Clear element highlight overlays (they persist until next mousemove otherwise)
+      if (highlightsContainerRef.current) {
+        highlightsContainerRef.current.innerHTML = "";
+      }
+
       window.getSelection()?.removeAllRanges();
 
       // Sync to server (non-blocking, but update local ID with server's ID)
@@ -2340,6 +2345,10 @@ const [settings, setSettings] = useState<ToolbarSettings>(() => {
       setPendingAnnotation(null);
       setPendingExiting(false);
     }, 150); // Match exit animation duration
+    // Clear element highlight overlays
+    if (highlightsContainerRef.current) {
+      highlightsContainerRef.current.innerHTML = "";
+    }
   }, []);
 
   // Delete annotation with exit animation

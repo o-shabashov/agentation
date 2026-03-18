@@ -4468,6 +4468,9 @@ function PageFeedbackToolbarCSS({
         setPendingAnnotation(null);
         setPendingExiting(false);
       }, 150);
+      if (highlightsContainerRef.current) {
+        highlightsContainerRef.current.innerHTML = "";
+      }
       window.getSelection()?.removeAllRanges();
       if (endpoint && currentSessionId) {
         syncAnnotation(endpoint, currentSessionId, newAnnotation).then((serverAnnotation) => {
@@ -4507,6 +4510,9 @@ function PageFeedbackToolbarCSS({
       setPendingAnnotation(null);
       setPendingExiting(false);
     }, 150);
+    if (highlightsContainerRef.current) {
+      highlightsContainerRef.current.innerHTML = "";
+    }
   }, []);
   const deleteAnnotation2 = (0, import_react4.useCallback)(
     (id) => {
