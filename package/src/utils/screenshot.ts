@@ -35,6 +35,11 @@ export async function captureAndUploadScreenshot(
           !el.hasAttribute("data-agentation-root")
         );
       },
+      // 1x1 transparent PNG placeholder for images that fail to load (cross-origin)
+      imagePlaceholder:
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=",
+      // Attempt CORS fetch for images where the server allows it
+      fetchRequestInit: { mode: "cors", credentials: "omit" },
     });
 
     const timeoutPromise = new Promise<never>((_, reject) =>

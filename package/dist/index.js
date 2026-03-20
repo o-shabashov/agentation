@@ -3515,7 +3515,11 @@ async function captureAndUploadScreenshot(annotation, endpoint) {
         const el = node;
         if (typeof el.hasAttribute !== "function") return true;
         return !el.hasAttribute("data-feedback-toolbar") && !el.hasAttribute("data-agentation-root");
-      }
+      },
+      // 1x1 transparent PNG placeholder for images that fail to load (cross-origin)
+      imagePlaceholder: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=",
+      // Attempt CORS fetch for images where the server allows it
+      fetchRequestInit: { mode: "cors", credentials: "omit" }
     });
     const timeoutPromise = new Promise(
       (_, reject) => setTimeout(() => reject(new Error("screenshot timeout")), CAPTURE_TIMEOUT_MS)
@@ -6007,7 +6011,7 @@ function PageFeedbackToolbarCSS({
                                   ] }),
                                   /* @__PURE__ */ (0, import_jsx_runtime5.jsxs)("span", { className: styles_module_default2.settingsVersion, children: [
                                     "v",
-                                    "2.3.3"
+                                    "2.3.4"
                                   ] }),
                                   /* @__PURE__ */ (0, import_jsx_runtime5.jsx)(
                                     "button",
