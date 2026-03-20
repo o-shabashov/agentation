@@ -3,8 +3,12 @@
  *
  * Captures a full-page screenshot using html-to-image (supports modern CSS
  * including oklch colors used by DaisyUI v4), then uploads to the server.
+ *
+ * html-to-image is statically imported so tsup bundles it into the dist —
+ * no dynamic import resolution needed from the consumer's bundler.
  */
 
+import { toCanvas } from "html-to-image";
 import type { Annotation } from "../types";
 
 const CAPTURE_TIMEOUT_MS = 10000;
@@ -20,9 +24,6 @@ export async function captureAndUploadScreenshot(
   endpoint: string
 ): Promise<void> {
   try {
-    const { toCanvas } = await loadHtmlToImage();
-    if (!toCanvas) return;
-
     // Capture page as canvas (html-to-image supports oklch / modern CSS)
     const capturePromise = toCanvas(document.body, {
       // Skip the agentation toolbar itself
@@ -60,33 +61,6 @@ export async function captureAndUploadScreenshot(
     });
   } catch (err) {
     console.warn("[Agentation] Screenshot capture failed:", err);
-  }
-}
-
-/**
- * Lazy-load html-to-image to avoid bundling when screenshots aren't used.
- */
-let _toCanvas: ((node: HTMLElement, options?: object) => Promise<HTMLCanvasElement>) | null = null;
-
-async function loadHtmlToImage(): Promise<{
-  toCanvas: ((node: HTMLElement, options?: object) => Promise<HTMLCanvasElement>) | null;
-}> {
-  if (_toCanvas) return { toCanvas: _toCanvas };
-  try {
-    const mod = await import("html-to-image");
-    _toCanvas = mod.toCanvas;
-    return { toCanvas: _toCanvas };
-  } catch {
-    // Fallback: try html2canvas (older browsers / bundling issues)
-    try {
-      const mod = await import("html2canvas" as string);
-      const html2canvas = (mod as { default?: unknown }).default || mod;
-      _toCanvas = html2canvas as typeof _toCanvas;
-      return { toCanvas: _toCanvas };
-    } catch {
-      console.warn("[Agentation] No screenshot library available");
-      return { toCanvas: null };
-    }
   }
 }
 
