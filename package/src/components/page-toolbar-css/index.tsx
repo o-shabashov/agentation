@@ -2292,6 +2292,9 @@ const [settings, setSettings] = useState<ToolbarSettings>(() => {
 
       // Clear all highlight overlays to prevent stale outlines
       setHoverInfo(null);
+      setHoveredMarkerId(null);
+      setHoveredTargetElement(null);
+      setHoveredTargetElements([]);
       if (highlightsContainerRef.current) {
         highlightsContainerRef.current.innerHTML = "";
       }
@@ -4013,12 +4016,6 @@ const [settings, setSettings] = useState<ToolbarSettings>(() => {
                     top: bb.y,
                     width: bb.width,
                     height: bb.height,
-                    ...(isMulti
-                      ? {}
-                      : {
-                          borderColor: "color-mix(in srgb, var(--agentation-color-accent) 60%, transparent)",
-                          backgroundColor: "color-mix(in srgb, var(--agentation-color-accent) 5%, transparent)",
-                        }),
                   }}
                 />
               );
