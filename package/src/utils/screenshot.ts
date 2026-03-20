@@ -24,23 +24,26 @@ export async function captureAndUploadScreenshot(
     // Create highlight overlay(s) on annotated elements
     const overlays = createHighlightOverlays(annotation);
 
-    // Small delay for overlay to render
-    await new Promise((r) => setTimeout(r, 50));
+    let canvas: HTMLCanvasElement;
+    try {
+      // Small delay for overlay to render
+      await new Promise((r) => setTimeout(r, 50));
 
-    // Capture full page
-    const canvas = await html2canvas(document.body, {
-      scale: 1,
-      useCORS: true,
-      logging: false,
-      allowTaint: true,
-      // Ignore the agentation toolbar itself
-      ignoreElements: (el: Element) =>
-        el.hasAttribute("data-feedback-toolbar") ||
-        el.hasAttribute("data-agentation-root"),
-    });
-
-    // Remove overlays
-    overlays.forEach((el) => el.remove());
+      // Capture full page
+      canvas = await html2canvas(document.body, {
+        scale: 1,
+        useCORS: true,
+        logging: false,
+        allowTaint: true,
+        // Ignore the agentation toolbar itself
+        ignoreElements: (el: Element) =>
+          el.hasAttribute("data-feedback-toolbar") ||
+          el.hasAttribute("data-agentation-root"),
+      });
+    } finally {
+      // Always remove overlays — even if html2canvas throws
+      overlays.forEach((el) => el.remove());
+    }
 
     // Convert to JPEG blob
     const blob = await new Promise<Blob | null>((resolve) =>
