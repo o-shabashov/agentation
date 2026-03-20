@@ -3510,11 +3510,20 @@ var CAPTURE_TIMEOUT_MS = 1e4;
 async function captureAndUploadScreenshot(annotation, endpoint) {
   try {
     const capturePromise = toCanvas(document.body, {
-      // Skip the agentation toolbar itself
+      // Skip the agentation toolbar itself and cross-origin images
       filter: (node) => {
         const el = node;
         if (typeof el.hasAttribute !== "function") return true;
-        return !el.hasAttribute("data-feedback-toolbar") && !el.hasAttribute("data-agentation-root");
+        if (el.hasAttribute("data-feedback-toolbar") || el.hasAttribute("data-agentation-root")) return false;
+        if (el.nodeName === "IMG") {
+          const img = el;
+          try {
+            const imgUrl = new URL(img.src);
+            if (imgUrl.origin !== window.location.origin) return false;
+          } catch {
+          }
+        }
+        return true;
       },
       // 1x1 transparent PNG placeholder for images that fail to load (cross-origin)
       imagePlaceholder: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=",

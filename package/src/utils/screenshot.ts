@@ -26,20 +26,27 @@ export async function captureAndUploadScreenshot(
   try {
     // Capture page as canvas (html-to-image supports oklch / modern CSS)
     const capturePromise = toCanvas(document.body, {
-      // Skip the agentation toolbar itself
+      // Skip the agentation toolbar itself and cross-origin images
       filter: (node: Node) => {
         const el = node as Element;
         if (typeof el.hasAttribute !== "function") return true;
-        return (
-          !el.hasAttribute("data-feedback-toolbar") &&
-          !el.hasAttribute("data-agentation-root")
-        );
+        // Skip agentation toolbar
+        if (el.hasAttribute("data-feedback-toolbar") || el.hasAttribute("data-agentation-root")) return false;
+        // Skip cross-origin images — html-to-image can't fetch them (CORS)
+        if (el.nodeName === "IMG") {
+          const img = el as HTMLImageElement;
+          try {
+            const imgUrl = new URL(img.src);
+            if (imgUrl.origin !== window.location.origin) return false;
+          } catch { /* relative URL, keep it */ }
+        }
+        return true;
       },
       // 1x1 transparent PNG placeholder for images that fail to load (cross-origin)
       imagePlaceholder:
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=",
       // Attempt CORS fetch for images where the server allows it
-      fetchRequestInit: { mode: "cors", credentials: "omit" },
+      fetchRequestInit: { mode: "cors" as RequestMode, credentials: "omit" as RequestCredentials },
     });
 
     const timeoutPromise = new Promise<never>((_, reject) =>
