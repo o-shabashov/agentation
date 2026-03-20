@@ -1,16 +1,16 @@
 /**
  * Screenshot capture utility for annotations.
  *
- * Captures a full-page screenshot with the annotated element highlighted,
- * then uploads it to the server.
+ * Captures a full-page screenshot using html-to-image (supports modern CSS
+ * including oklch colors used by DaisyUI v4), then uploads to the server.
  */
 
 import type { Annotation } from "../types";
 
-const CAPTURE_TIMEOUT_MS = 8000;
+const CAPTURE_TIMEOUT_MS = 10000;
 
 /**
- * Capture a screenshot of the page with highlighted annotation element(s),
+ * Capture a screenshot of the page with the annotated element highlighted,
  * then upload to the server endpoint.
  *
  * This is fire-and-forget: errors are logged but never thrown.
@@ -20,24 +20,24 @@ export async function captureAndUploadScreenshot(
   endpoint: string
 ): Promise<void> {
   try {
-    const html2canvas = await loadHtml2Canvas();
-    if (!html2canvas) return;
+    const { toCanvas } = await loadHtmlToImage();
+    if (!toCanvas) return;
 
-    // Capture first (clean, no overlays) — then draw highlight on canvas
-    // This avoids stale red divs if html2canvas hangs or throws.
-    const capturePromise = html2canvas(document.body, {
-      scale: 1,
-      useCORS: true,
-      logging: false,
-      allowTaint: true,
-      // Ignore the agentation toolbar itself
-      ignoreElements: (el: Element) =>
-        el.hasAttribute("data-feedback-toolbar") ||
-        el.hasAttribute("data-agentation-root"),
+    // Capture page as canvas (html-to-image supports oklch / modern CSS)
+    const capturePromise = toCanvas(document.body, {
+      // Skip the agentation toolbar itself
+      filter: (node: Node) => {
+        const el = node as Element;
+        if (typeof el.hasAttribute !== "function") return true;
+        return (
+          !el.hasAttribute("data-feedback-toolbar") &&
+          !el.hasAttribute("data-agentation-root")
+        );
+      },
     });
 
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("html2canvas timeout")), CAPTURE_TIMEOUT_MS)
+      setTimeout(() => reject(new Error("screenshot timeout")), CAPTURE_TIMEOUT_MS)
     );
 
     const canvas = await Promise.race([capturePromise, timeoutPromise]);
@@ -64,19 +64,29 @@ export async function captureAndUploadScreenshot(
 }
 
 /**
- * Lazy-load html2canvas to avoid bundling it when screenshots aren't used.
+ * Lazy-load html-to-image to avoid bundling when screenshots aren't used.
  */
-let _html2canvas: typeof import("html2canvas").default | null = null;
+let _toCanvas: ((node: HTMLElement, options?: object) => Promise<HTMLCanvasElement>) | null = null;
 
-async function loadHtml2Canvas(): Promise<typeof import("html2canvas").default | null> {
-  if (_html2canvas) return _html2canvas;
+async function loadHtmlToImage(): Promise<{
+  toCanvas: ((node: HTMLElement, options?: object) => Promise<HTMLCanvasElement>) | null;
+}> {
+  if (_toCanvas) return { toCanvas: _toCanvas };
   try {
-    const mod = await import("html2canvas");
-    _html2canvas = mod.default || mod;
-    return _html2canvas;
+    const mod = await import("html-to-image");
+    _toCanvas = mod.toCanvas;
+    return { toCanvas: _toCanvas };
   } catch {
-    console.warn("[Agentation] html2canvas not available, screenshots disabled");
-    return null;
+    // Fallback: try html2canvas (older browsers / bundling issues)
+    try {
+      const mod = await import("html2canvas" as string);
+      const html2canvas = (mod as { default?: unknown }).default || mod;
+      _toCanvas = html2canvas as typeof _toCanvas;
+      return { toCanvas: _toCanvas };
+    } catch {
+      console.warn("[Agentation] No screenshot library available");
+      return { toCanvas: null };
+    }
   }
 }
 
