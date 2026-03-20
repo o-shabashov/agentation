@@ -7,6 +7,8 @@
 
 import type { Annotation } from "../types";
 
+const CAPTURE_TIMEOUT_MS = 8000;
+
 /**
  * Capture a screenshot of the page with highlighted annotation element(s),
  * then upload to the server endpoint.
@@ -21,29 +23,27 @@ export async function captureAndUploadScreenshot(
     const html2canvas = await loadHtml2Canvas();
     if (!html2canvas) return;
 
-    // Create highlight overlay(s) on annotated elements
-    const overlays = createHighlightOverlays(annotation);
+    // Capture first (clean, no overlays) — then draw highlight on canvas
+    // This avoids stale red divs if html2canvas hangs or throws.
+    const capturePromise = html2canvas(document.body, {
+      scale: 1,
+      useCORS: true,
+      logging: false,
+      allowTaint: true,
+      // Ignore the agentation toolbar itself
+      ignoreElements: (el: Element) =>
+        el.hasAttribute("data-feedback-toolbar") ||
+        el.hasAttribute("data-agentation-root"),
+    });
 
-    let canvas: HTMLCanvasElement;
-    try {
-      // Small delay for overlay to render
-      await new Promise((r) => setTimeout(r, 50));
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("html2canvas timeout")), CAPTURE_TIMEOUT_MS)
+    );
 
-      // Capture full page
-      canvas = await html2canvas(document.body, {
-        scale: 1,
-        useCORS: true,
-        logging: false,
-        allowTaint: true,
-        // Ignore the agentation toolbar itself
-        ignoreElements: (el: Element) =>
-          el.hasAttribute("data-feedback-toolbar") ||
-          el.hasAttribute("data-agentation-root"),
-      });
-    } finally {
-      // Always remove overlays — even if html2canvas throws
-      overlays.forEach((el) => el.remove());
-    }
+    const canvas = await Promise.race([capturePromise, timeoutPromise]);
+
+    // Draw highlight rect(s) directly on the captured canvas
+    drawHighlightOnCanvas(canvas, annotation);
 
     // Convert to JPEG blob
     const blob = await new Promise<Blob | null>((resolve) =>
@@ -81,11 +81,12 @@ async function loadHtml2Canvas(): Promise<typeof import("html2canvas").default |
 }
 
 /**
- * Create red highlight overlay divs on the annotation's bounding box(es).
- * Returns the overlay elements (caller must remove them after capture).
+ * Draw red highlight rect(s) directly on the canvas (no DOM overlay needed).
  */
-function createHighlightOverlays(annotation: Annotation): HTMLElement[] {
-  const overlays: HTMLElement[] = [];
+function drawHighlightOnCanvas(canvas: HTMLCanvasElement, annotation: Annotation): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
   const scrollY = window.scrollY;
 
   const boxes = annotation.elementBoundingBoxes?.length
@@ -94,24 +95,16 @@ function createHighlightOverlays(annotation: Annotation): HTMLElement[] {
       ? [annotation.boundingBox]
       : [];
 
+  ctx.save();
+  ctx.strokeStyle = "#FF383C";
+  ctx.lineWidth = 3;
+  ctx.fillStyle = "rgba(255, 56, 60, 0.08)";
+
   for (const box of boxes) {
-    const overlay = document.createElement("div");
-    overlay.style.cssText = `
-      position: absolute;
-      left: ${box.x}px;
-      top: ${annotation.isFixed ? box.y + scrollY : box.y}px;
-      width: ${box.width}px;
-      height: ${box.height}px;
-      border: 3px solid #FF383C;
-      background: rgba(255, 56, 60, 0.08);
-      border-radius: 4px;
-      z-index: 999998;
-      pointer-events: none;
-      box-sizing: border-box;
-    `;
-    document.body.appendChild(overlay);
-    overlays.push(overlay);
+    const y = annotation.isFixed ? box.y : box.y - scrollY;
+    ctx.fillRect(box.x, y, box.width, box.height);
+    ctx.strokeRect(box.x, y, box.width, box.height);
   }
 
-  return overlays;
+  ctx.restore();
 }
